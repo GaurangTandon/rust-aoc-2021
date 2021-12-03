@@ -1,38 +1,34 @@
 use std::{
-    collections::HashSet,
     fs::File,
     io::{BufReader, Read, Result as io_result},
 };
 
+const SIZE: usize = 12;
+
 struct FileReadIterator {
-    buffer: [u8; 1],
+    buffer: [u8; SIZE + 1],
     buf_reader: BufReader<File>,
 }
 
-enum Action {
-    U,
-    R,
-    D,
-    L,
-}
-
 impl Iterator for FileReadIterator {
-    type Item = Action; // 0-3, starting up and clockwise
-    fn next(&mut self) -> Option<Action> {
-        self.buf_reader.read_exact(&mut self.buffer).unwrap();
-        let one_char = self.buffer[0] as char;
+    type Item = u32; // 0-3, starting up and clockwise
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut failed = false;
+        // TODO: any better way to handle the EOF?
+        self.buf_reader
+            .read_exact(&mut self.buffer)
+            .unwrap_or_else(|_| failed = true);
 
-        if char::is_whitespace(one_char) {
+        if failed {
             return None;
         }
 
-        return Some(match one_char {
-            '^' => Action::U,
-            '>' => Action::R,
-            'v' => Action::D,
-            '<' => Action::L,
-            _ => panic!("Bad input"),
-        });
+        // TODO: Is there no efficient way to pass the buffer directly to from_str_radix?
+        // Because creating this string object is expensive
+        let take = std::str::from_utf8(&self.buffer[0..SIZE])
+            .unwrap()
+            .to_string();
+        return Some(u32::from_str_radix(&take, 2).unwrap());
     }
 }
 
@@ -43,64 +39,81 @@ fn get_reader(day: u32) -> io_result<FileReadIterator> {
     let file_reader = BufReader::new(input_file);
     return Ok(FileReadIterator {
         buf_reader: file_reader,
-        buffer: [0; 1],
+        buffer: [0; SIZE + 1],
     });
 }
 
 fn part1(input_reader: FileReadIterator) -> u32 {
-    let mut hs = HashSet::new();
-    let mut position = (0, 0);
+    let mut count = [0; SIZE];
+    let mut total = 0;
+
     for token in input_reader {
-        match token {
-            Action::U => {
-                position.0 += 1;
-            }
-            Action::D => {
-                position.0 -= 1;
-            }
-            Action::R => {
-                position.1 += 1;
-            }
-            Action::L => {
-                position.1 -= 1;
-            }
+        for bit in 0..SIZE {
+            count[bit] += if (token & (1 << bit)) > 0 { 1 } else { 0 };
         }
-        hs.insert(position);
+        total += 1;
     }
 
-    return hs.len() as u32;
+    let (mut low, mut high) = (0, 0);
+    for bit in 0..SIZE {
+        let one = count[bit];
+        let zero = total - one;
+        if one > zero {
+            high += 1 << bit;
+        } else {
+            low += 1 << bit;
+        }
+    }
+    return low * high;
 }
 
 fn part2(input_reader: FileReadIterator) -> u32 {
-    let start_pos = (0, 0);
-    let mut hs = HashSet::new();
-    hs.insert(start_pos);
+    let mut tokens = input_reader.collect::<Vec<u32>>();
+    tokens.sort();
 
-    let mut positions = [start_pos, start_pos];
-    let mut curr = 0;
-    for token in input_reader {
-        match token {
-            Action::U => {
-                positions[curr].0 += 1;
+    let mut answer = [0, 0];
+
+    for case in 0..2 {
+        let mut number: u32 = 0;
+        let (mut b, mut e): (i32, i32) = (0, tokens.len() as i32 - 1);
+        for bit in (0..SIZE).rev() {
+            // find the first index at which a 1 occurs
+            // using binary search
+            let (b_, e_, mut ans): (i32, i32, i32) = (b, e, e + 1);
+            if b == e {
+                number = tokens[b as usize];
+                break;
             }
-            Action::D => {
-                positions[curr].0 -= 1;
+            while b <= e {
+                let mid = (b + e) / 2;
+                if (tokens[mid as usize] & (1 << bit)) > 0 {
+                    ans = mid;
+                    e = mid - 1;
+                } else {
+                    b = mid + 1;
+                }
             }
-            Action::R => {
-                positions[curr].1 += 1;
-            }
-            Action::L => {
-                positions[curr].1 -= 1;
+            let count = [ans - 1 - b_ + 1, e_ - ans + 1];
+            let keep_one =
+                (case == 0 && count[1] >= count[0]) || (case == 1 && count[1] < count[0]);
+            if keep_one {
+                b = ans;
+                e = e_;
+                number += 1 << bit;
+            } else {
+                b = b_;
+                e = ans - 1;
             }
         }
-        hs.insert(positions[curr]);
-        curr = 1 - curr;
+        answer[case] = number;
     }
 
-    return hs.len() as u32;
+    println!("{} {}", answer[0], answer[1]);
+    return answer[0] * answer[1];
 }
 
 fn main() {
+    // TODO: take day argument from command line
     let input_iterator = get_reader(3).expect("Input read correctly");
     // let answer = part1(input_iterator);
     let answer = part2(input_iterator);
