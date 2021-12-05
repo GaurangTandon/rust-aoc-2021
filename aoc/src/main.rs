@@ -5,55 +5,30 @@ use std::{
     iter::Iterator,
 };
 
-// We don't need this macro when using match arms
-// But when using direct equality operator, we do need it
-#[derive(PartialEq)]
-enum FileReadState {
-    Actions,
-    Grids,
-}
-
 struct FileReadIterator {
     buf_reader: BufReader<File>,
-    state: FileReadState,
 }
 
-const MAX_NUM: usize = 100;
-const GRID_DIM: usize = 5;
+type Point = (usize, usize);
+type Line = (Point, Point);
 
 impl Iterator for FileReadIterator {
-    type Item = Vec<u32>;
+    type Item = Line;
     fn next(&mut self) -> Option<Self::Item> {
-        match self.state {
-            FileReadState::Actions => {
-                let mut x = String::new();
-                self.buf_reader.read_line(&mut x).unwrap();
-                self.state = FileReadState::Grids;
-                // TODO: some better way to not have to read teh trailing newline in the first
-                // place?
-                x.pop();
-                return Some(x.split(",").map(|x| x.parse::<u32>().unwrap()).collect());
-            }
-            FileReadState::Grids => {
-                let mut grid = Vec::<u32>::with_capacity(GRID_DIM * GRID_DIM);
-                let mut x = String::new();
-                self.buf_reader.read_line(&mut x).unwrap(); // ignore one line in the input
-                for _ in 0..GRID_DIM {
-                    // TODO: some better way to build this grid?
-                    let mut x = String::new();
-                    let sizeread = self.buf_reader.read_line(&mut x).unwrap();
-                    if sizeread == 0 {
-                        return None;
-                    }
-                    x.pop();
-
-                    // TODO: split_whitespace combines consecutives whitespaces into one
-                    // but for general delimiter, read on: https://stackoverflow.com/q/70223794
-                    grid.extend(x.split_whitespace().map(|x| x.parse::<u32>().unwrap()));
-                }
-                return Some(grid);
-            }
+        let mut x = String::new();
+        self.buf_reader.read_line(&mut x).unwrap();
+        if x.is_empty() {
+            return None;
         }
+        x.pop();
+        let line: Vec<Vec<usize>> = x
+            .split(" -> ")
+            .map(|x| x.split(",").map(|y| y.parse::<usize>().unwrap()).collect())
+            .collect();
+        assert!(line.len() == 2);
+        assert!(line[0].len() == 2);
+        assert!(line[1].len() == 2);
+        return Some(((line[0][0], line[0][1]), (line[1][0], line[1][1])));
     }
 }
 
@@ -62,95 +37,118 @@ fn get_reader(day: u32) -> io_result<FileReadIterator> {
     let file_reader = BufReader::new(input_file);
     return Ok(FileReadIterator {
         buf_reader: file_reader,
-        state: FileReadState::Actions,
     });
 }
 
-fn precompute(input_reader: &mut FileReadIterator) -> [i32; MAX_NUM] {
-    let nums = input_reader.next().unwrap();
-    let mut first_appear: [i32; MAX_NUM] = [-1; MAX_NUM];
-    for (index, num) in nums.iter().enumerate() {
-        if first_appear[*num as usize] == -1 {
-            first_appear[*num as usize] = index as i32;
-        }
-    }
-    return first_appear;
-}
+const GRID_SIZE: usize = 1000;
 
-enum Strategy {
-    Earliest,
-    Latest,
-}
+fn part1(input_reader: FileReadIterator) -> u32 {
+    let mut horizontal = vec![[0 as i16; GRID_SIZE + 1]; GRID_SIZE + 1];
+    let mut vertical = vec![[0 as i16; GRID_SIZE + 1]; GRID_SIZE + 1];
+    let mut symmdiag = vec![[0 as i16; GRID_SIZE + 1]; GRID_SIZE + 1];
+    let mut antidiag = vec![[0 as i16; GRID_SIZE + 1]; GRID_SIZE + 1];
+    let mut counts = vec![[0 as u16; GRID_SIZE]; GRID_SIZE];
 
-fn day4(mut input_reader: FileReadIterator, strategy: Strategy) -> u32 {
-    let first_appear = precompute(&mut input_reader);
-    let (mut first_finish, mut finish_answer) = (u32::MAX, u32::MAX);
-    match strategy {
-        Strategy::Latest => {
-            first_finish = 0;
-        }
-        _ => {}
-    }
+    for ((mut sx, mut sy), (mut ex, mut ey)) in input_reader {
+        let is_horizontal = sy == ey;
+        let is_vertical = sx == ex;
 
-    // TODO: use rust codegen to make these values constant
-    // https://stackoverflow.com/questions/59121887
-    let col_masks =
-        (0..GRID_DIM).map(|start| ((start..GRID_DIM * GRID_DIM).step_by(GRID_DIM).collect()));
-    let row_masks = (0..GRID_DIM * GRID_DIM)
-        .step_by(GRID_DIM)
-        .map(|start| (start..start + GRID_DIM).step_by(1).collect());
-    let masks: Vec<Vec<usize>> = col_masks.chain(row_masks).collect();
-
-    for grid in input_reader {
-        let mut earliest = u32::MAX;
-        for mask in &masks {
-            let mut mx: i32 = 0;
-            for pos in mask {
-                let val = first_appear[grid[*pos] as usize];
-                if val == -1 {
-                    mx = val;
-                    break;
-                }
-                mx = i32::max(mx, val);
+        if is_horizontal {
+            if sx > ex {
+                std::mem::swap(&mut sx, &mut ex);
             }
-            if mx == -1 {
-                continue;
+            horizontal[sy][sx] += 1;
+            horizontal[sy][ex + 1] -= 1;
+        } else if is_vertical {
+            if sy > ey {
+                std::mem::swap(&mut sy, &mut ey);
             }
-            if (mx as u32) < earliest {
-                earliest = mx as u32;
-            }
-        }
-        match strategy {
-            Strategy::Earliest => {
-                if earliest > first_finish {
-                    continue;
-                }
-            }
-            Strategy::Latest => {
-                if earliest < first_finish {
-                    continue;
-                }
-            }
-        }
-        let (mut sum, mut thatnum) = (0, 0);
-        for num in grid {
-            let val = first_appear[num as usize] as u32;
-            if val > earliest {
-                sum += num;
-            } else if val == earliest {
-                thatnum = num;
-            }
-        }
-
-        if first_finish == earliest {
-            finish_answer = u32::max(finish_answer, thatnum * sum);
+            vertical[sy][sx] += 1;
+            vertical[ey + 1][sx] -= 1;
         } else {
-            finish_answer = thatnum * sum;
-            first_finish = earliest;
+            if sx > ex {
+                std::mem::swap(&mut sx, &mut ex);
+                std::mem::swap(&mut sy, &mut ey);
+            }
+            if sy < ey {
+                symmdiag[sy][sx] += 1;
+                symmdiag[ey + 1][ex + 1] += 1;
+            } else {
+                antidiag[sy][sx] += 1;
+                if ey > 0 {
+                    antidiag[ey - 1][ex + 1] += 1;
+                }
+            }
         }
     }
 
-    return finish_answer;
+    for i in 0..GRID_SIZE {
+        let mut count = 0;
+        for j in 0..GRID_SIZE {
+            count += horizontal[i][j];
+            counts[i][j] = count as u16;
+        }
+    }
+    for j in 0..GRID_SIZE {
+        let mut count = 0;
+        for i in 0..GRID_SIZE {
+            count += vertical[i][j];
+            counts[i][j] += count as u16;
+        }
+    }
+    for j in 0..GRID_SIZE {
+        let mut count = 0;
+        let mut row: i32 = 0;
+        let mut col = j;
+
+        while row < GRID_SIZE as i32 && col < GRID_SIZE {
+            count += symmdiag[row as usize][col];
+            counts[row as usize][col] += count as u16;
+            row += 1;
+            col += 1;
+        }
+        row = GRID_SIZE as i32 - 1;
+        col = j;
+        count = 0;
+        while row >= 0 && col < GRID_SIZE {
+            count += antidiag[row as usize][col];
+            counts[row as usize][col] += count as u16;
+            row -= 1;
+            col += 1;
+        }
+    }
+    for j in 0..GRID_SIZE {
+        let mut count = 0;
+        let mut row = j as i32;
+        let mut col = 0;
+
+        while row < GRID_SIZE as i32 && col < GRID_SIZE {
+            count += symmdiag[row as usize][col];
+            counts[row as usize][col] += count as u16;
+            row += 1;
+            col += 1;
+        }
+        row = j as i32;
+        col = GRID_SIZE - 1;
+        count = 0;
+        while row >= 0 && col < GRID_SIZE {
+            count += antidiag[row as usize][col];
+            counts[row as usize][col] += count as u16;
+            row -= 1;
+            col += 1;
+        }
+    }
+
+    let mut answer = 0;
+    for i in 0..GRID_SIZE {
+        for j in 0..GRID_SIZE {
+            if counts[i][j] > 1 {
+                answer += 1;
+            }
+        }
+    }
+
+    return answer;
 }
 
 fn main() {
@@ -161,6 +159,6 @@ fn main() {
 
     let input_iterator = get_reader(day_integer).expect("Input read correctly");
 
-    let answer = day4(input_iterator, Strategy::Latest);
+    let answer = part1(input_iterator);
     println!("Answer: {}", answer)
 }
