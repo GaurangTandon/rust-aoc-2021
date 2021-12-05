@@ -1,4 +1,5 @@
 use std::{
+    env,
     fs::File,
     io::{BufRead, BufReader, Result as io_result},
     iter::Iterator,
@@ -21,7 +22,7 @@ const MAX_NUM: usize = 100;
 const GRID_DIM: usize = 5;
 
 impl Iterator for FileReadIterator {
-    type Item = Vec<u32>; // 0-3, starting up and clockwise
+    type Item = Vec<u32>;
     fn next(&mut self) -> Option<Self::Item> {
         match self.state {
             FileReadState::Actions => {
@@ -140,7 +141,7 @@ fn day4(mut input_reader: FileReadIterator, strategy: Strategy) -> u32 {
                 thatnum = num;
             }
         }
-        println!("{} {}", thatnum, sum);
+
         if first_finish == earliest {
             finish_answer = u32::max(finish_answer, thatnum * sum);
         } else {
@@ -153,8 +154,12 @@ fn day4(mut input_reader: FileReadIterator, strategy: Strategy) -> u32 {
 }
 
 fn main() {
-    // TODO: take day argument from command line
-    let input_iterator = get_reader(4).expect("Input read correctly");
+    let mut args = env::args();
+    args.next();
+    let day = args.next().expect("Give day argument");
+    let day_integer = day.parse::<u32>().unwrap();
+
+    let input_iterator = get_reader(day_integer).expect("Input read correctly");
 
     let answer = day4(input_iterator, Strategy::Latest);
     println!("Answer: {}", answer)
