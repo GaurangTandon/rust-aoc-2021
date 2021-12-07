@@ -26,27 +26,18 @@ impl Iterator for FileReadIterator {
 fn part1(mut input_reader: FileReadIterator) -> u32 {
     let mut values = input_reader.next().unwrap();
     values.sort();
-    let mut sum = 0;
-    for value in &values {
-        sum += *value - values[0];
+    // using meths we can prove that the answer is the median
+    // basically set differential of the cost expression to zero
+    let cand = values[values.len() / 2];
+    let mut cost = 0;
+    for value in values {
+        cost += if value > cand {
+            value - cand
+        } else {
+            cand - value
+        };
     }
-    let mut answer_cost = u32::MAX;
-
-    for index in 0..values.len() {
-        if sum < answer_cost {
-            answer_cost = sum;
-        }
-        if index < values.len() - 1 {
-            let delta = values[index + 1] - values[index];
-            let peoplebehind = (index + 1) as u32;
-            let peopleahead = (values.len() - index - 1) as u32;
-
-            sum += delta * peoplebehind;
-            sum -= delta * peopleahead;
-        }
-    }
-
-    return answer_cost;
+    return cost;
 }
 
 fn ap(x: u32) -> u32 {
@@ -71,7 +62,11 @@ fn part2(mut input_reader: FileReadIterator) -> u32 {
     for cand in candidates {
         let mut cost = 0;
         for value in &values {
-            cost += ap(if *value > cand { value - cand } else { cand - value });
+            cost += ap(if *value > cand {
+                value - cand
+            } else {
+                cand - value
+            });
         }
         answer_cost = u32::min(answer_cost, cost);
     }
@@ -96,7 +91,7 @@ fn main() {
 
     let input_iterator = get_reader(day_integer).expect("Input read correctly");
 
-    // let answer = part1(input_iterator);
-    let answer = part2(input_iterator);
+    let answer = part1(input_iterator);
+    // let answer = part2(input_iterator);
     println!("Answer: {}", answer)
 }
