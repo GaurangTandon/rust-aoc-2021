@@ -7,51 +7,76 @@ use std::{
 
 struct FileReadIterator {
     buf_reader: BufReader<File>,
-    values: Vec<u32>,
-    index: usize,
     has_read: bool,
 }
 
 impl Iterator for FileReadIterator {
-    type Item = u32;
+    type Item = Vec<u32>;
     fn next(&mut self) -> Option<Self::Item> {
         if self.has_read == false {
             let mut x = String::new();
             self.buf_reader.read_line(&mut x).unwrap();
             x.pop();
-            self.values = x.split(",").map(|x| x.parse::<u32>().unwrap()).collect();
-            self.has_read = true;
-        }
-        if self.index < self.values.len() {
-            self.index += 1;
-            return Some(self.values[self.index - 1]);
+            return Some(x.split(",").map(|x| x.parse::<u32>().unwrap()).collect());
         }
         return None;
     }
 }
 
-fn part1(input_reader: FileReadIterator) -> u64 {
-    const DAYS: usize = 256;
-    const FISH_MAX: usize = 8;
-    let mut dp = [[0 as u64; DAYS + FISH_MAX + 2]; FISH_MAX + 1];
-    // dp[i value fish][jth day] = dp[6][j + i + 1] + dp[8][j + i + 1]
-    // dp[i][DAYS + 1] = 0
-    for day in (0..=DAYS).rev() {
-        for fish in 0..=FISH_MAX {
-            let creation_day = day + fish + 1;
-            if creation_day > DAYS {
-                dp[fish][day] = 1;
-            } else {
-                dp[fish][day] = dp[6][creation_day] + dp[8][creation_day];
-            }
+fn part1(mut input_reader: FileReadIterator) -> u32 {
+    let mut values = input_reader.next().unwrap();
+    values.sort();
+    let mut sum = 0;
+    for value in &values {
+        sum += *value - values[0];
+    }
+    let mut answer_cost = u32::MAX;
+
+    for index in 0..values.len() {
+        if sum < answer_cost {
+            answer_cost = sum;
+        }
+        if index < values.len() - 1 {
+            let delta = values[index + 1] - values[index];
+            let peoplebehind = (index + 1) as u32;
+            let peopleahead = (values.len() - index - 1) as u32;
+
+            sum += delta * peoplebehind;
+            sum -= delta * peopleahead;
         }
     }
 
-    let mut answer = 0;
-    for fish in input_reader {
-        answer += dp[fish as usize][0];
+    return answer_cost;
+}
+
+fn ap(x: u32) -> u32 {
+    return x * (x + 1) / 2;
+}
+
+fn part2(mut input_reader: FileReadIterator) -> u32 {
+    let mut values = input_reader.next().unwrap();
+    values.sort();
+
+    let mut sum = 0;
+    let len = values.len() as u32;
+    for value in &values {
+        sum += value;
     }
-    return answer;
+    sum /= len;
+
+    let candidates = [sum, sum + 1];
+
+    let mut answer_cost = u32::MAX;
+
+    for cand in candidates {
+        let mut cost = 0;
+        for value in &values {
+            cost += ap(if *value > cand { value - cand } else { cand - value });
+        }
+        answer_cost = u32::min(answer_cost, cost);
+    }
+
+    return answer_cost;
 }
 
 fn get_reader(day: u32) -> io_result<FileReadIterator> {
@@ -59,8 +84,6 @@ fn get_reader(day: u32) -> io_result<FileReadIterator> {
     let file_reader = BufReader::new(input_file);
     return Ok(FileReadIterator {
         buf_reader: file_reader,
-        index: 0,
-        values: Vec::new(),
         has_read: false,
     });
 }
@@ -73,6 +96,7 @@ fn main() {
 
     let input_iterator = get_reader(day_integer).expect("Input read correctly");
 
-    let answer = part1(input_iterator);
+    // let answer = part1(input_iterator);
+    let answer = part2(input_iterator);
     println!("Answer: {}", answer)
 }
